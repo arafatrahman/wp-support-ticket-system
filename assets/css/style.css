@@ -1,0 +1,77 @@
+/* --- General & Frontend Styles --- */
+
+.wsts-frontend-container {
+    margin-top: 30px;
+    margin-bottom: 30px;
+}
+
+/* Status & Priority Badges */
+.badge {
+    color: #fff;
+    font-weight: 500;
+    padding: 0.4em 0.7em;
+    border-radius: 0.25rem;
+    font-size: 0.85em;
+}
+
+/* Conversation/Reply Styles */
+.wsts-reply-item {
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 15px;
+    background-color: #f9f9f9;
+}
+
+.wsts-reply-item .reply-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+}
+
+.wsts-reply-item .reply-header strong {
+    font-size: 1.1em;
+}
+
+.wsts-reply-item.admin-reply {
+    background-color: #e7f3ff; /* Light blue for admin replies */
+    border-left: 4px solid #0d6efd;
+}
+
+.wsts-reply-item.user-reply {
+    border-left: 4px solid #6c757d;
+}
+
+.wsts-reply-item .reply-body p:last-child {
+    margin-bottom: 0;
+}
+
+
+/* --- Admin Specific Styles --- */
+
+/* Align badges in admin list table */
+.wp-list-table .column-status .badge,
+.wp-list-table .column-priority .badge {
+    display: inline-block;
+    min-width: 70px;
+    text-align: center;
+}
+
+/* Admin single ticket view */
+#poststuff .postbox .inside {
+    margin: 0;
+    padding: 15px;
+}
+
+#poststuff .wsts-reply-item {
+    max-width: 98%;
+}
+
+/* Taxonomy color picker alignment */
+.form-field .wp-picker-container {
+    vertical-align: top;
+    display: inline-block;
+}
