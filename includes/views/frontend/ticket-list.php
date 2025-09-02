@@ -242,7 +242,7 @@ $ticket_data_paginated = array_slice( $ticket_data, ( $page - 1 ) * $per_page, $
                 </div>
                 <div class="wsts_form-group">
                     <label for="wsts_priority"><?php esc_html_e( 'Priority', 'wsts' ); ?></label>
-                    <select id="wsts_priority" required>
+                    <select id="wsts_priority" name="wsts_priority" required>
                         <option value=""><?php esc_html_e( 'Select Priority', 'wsts' ); ?></option>
                         <?php foreach ( $priorities as $priority ) : ?>
                             <option value="<?php echo esc_attr( $priority->term_id ); ?>"><?php echo esc_html( $priority->name ); ?></option>

@@ -50,15 +50,13 @@ if ( ! class_exists( 'WSTS_Ajax_Controller' ) ) {
             if ( ! is_user_logged_in() ) {
                 wp_send_json_error( ['message' => 'You must be logged in.'] );
             }
-            print_r($_POST);
-            update_option('debug_wsts', $_POST);
 
             $subject = sanitize_text_field( $_POST['subject'] );
             $product_id = isset( $_POST['product_id'] ) ? intval( $_POST['product_id'] ) : 0;
-            $priority_id = intval( $_POST['priority'] );
+            $priority_id = isset( $_POST['wsts_priority'] ) ? intval( $_POST['wsts_priority'] ) : 0;
             $description = wp_kses_post( $_POST['description'] );
 
-            if ( empty( $subject ) || empty( $priority_id ) || empty( $description ) ) {
+            if ( empty( $subject ) || empty( $description ) ) {
                 wp_send_json_error( ['message' => 'Please fill in all required fields.'] );
             }
 
