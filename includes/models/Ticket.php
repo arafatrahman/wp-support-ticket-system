@@ -59,7 +59,7 @@ class WSTS_Ticket_Model {
     public static function create_ticket_draft($data) {
         $ticket_data = [
             'post_title' => $data['subject'],
-            'post_content' => ' ', // Content will be added as the first comment
+            'post_content' => $data['content'],
             'post_status' => 'pending', // Create as pending
             'post_author' => $data['author_id'],
             'post_type' => 'support_ticket',

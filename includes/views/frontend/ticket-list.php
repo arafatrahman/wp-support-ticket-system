@@ -1,668 +1,327 @@
 <?php
 // includes/views/frontend/ticket-list.php
 
+// Prevent direct access
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+// Ensure user is logged in
+if ( ! is_user_logged_in() ) {
+    echo '<p>' . esc_html__( 'You must be logged in to view your support tickets.', 'wsts' ) . '</p>';
+    return;
+}
+
+// Enqueue styles and scripts
+wp_enqueue_style( 'wsts-ticket-list', WSTS_PLUGIN_URL . 'assets/css/wsts-ticket-list.css', [], '1.0.2' );
+wp_enqueue_script( 'wsts-ticket-list', WSTS_PLUGIN_URL . 'assets/js/wsts-ticket-list.js', ['jquery'], '1.0.2', true );
+
+// Fetch ticket data
+$user_id = get_current_user_id();
+$user = wp_get_current_user();
+$tickets_query = WSTS_Ticket_Model::get_user_tickets( $user_id );
+$priorities = get_terms( ['taxonomy' => 'ticket_priority', 'hide_empty' => false] );
+$statuses = get_terms( ['taxonomy' => 'ticket_status', 'hide_empty' => false] );
+$ticket_data = [];
+if ( $tickets_query->have_posts() ) {
+    while ( $tickets_query->have_posts() ) {
+        $tickets_query->the_post();
+        $ticket_id = get_the_ID();
+        $status_terms = get_the_terms( $ticket_id, 'ticket_status' );
+        $status = ( $status_terms && ! is_wp_error( $status_terms ) ) ? array_shift( $status_terms ) : null;
+        $priority_terms = get_the_terms( $ticket_id, 'ticket_priority' );
+        $priority = ( $priority_terms && ! is_wp_error( $priority_terms ) ) ? array_shift( $priority_terms ) : null;
+        $product_id = get_post_meta( $ticket_id, '_wsts_product_id', true );
+        $product_name = $product_id ? get_the_title( $product_id ) : 'General Service';
+        $ticket_data[] = [
+            'id' => $ticket_id,
+            'subject' => get_the_title(),
+            'requester' => $user->user_email,
+            'status' => $status ? $status->slug : 'pending',
+            'status_name' => $status ? $status->name : 'Pending',
+            'priority' => $priority ? $priority->slug : 'low',
+            'priority_name' => $priority ? $priority->name : 'Low',
+            'created' => human_time_diff( get_the_time( 'U' ), current_time( 'timestamp' ) ) . ' ago',
+            'department' => $product_id ? 'product' : 'general',
+            'description' => get_the_content(),
+            'comments' => get_comments( ['post_id' => $ticket_id] ),
+        ];
+    }
+    wp_reset_postdata();
+}
+
+// Localize script with all data
+wp_localize_script( 'wsts-ticket-list', 'wsts_ajax', [
+    'ajax_url' => admin_url( 'admin-ajax.php' ),
+    'nonce' => wp_create_nonce( 'wsts_nonce' ),
+    'is_admin' => current_user_can( 'manage_options' ),
+    'tickets' => $ticket_data,
+] );
+
+// Calculate stats
+$base_args = [
+    'post_type' => 'support_ticket',
+    'posts_per_page' => -1,
+    'meta_query' => [['key' => '_wsts_user_id', 'value' => $user_id, 'compare' => '=']],
+    'post_status' => 'any',
+];
+$total_query = new WP_Query( $base_args );
+$total = $total_query->found_posts;
+$open_args = array_merge( $base_args, [
+    'tax_query' => [['taxonomy' => 'ticket_status', 'field' => 'slug', 'terms' => 'open']],
+]);
+$open_query = new WP_Query( $open_args );
+$open = $open_query->found_posts;
+$pending_args = array_merge( $base_args, [
+    'tax_query' => [['taxonomy' => 'ticket_status', 'field' => 'slug', 'terms' => 'pending']],
+]);
+$pending_query = new WP_Query( $pending_args );
+$pending = $pending_query->found_posts;
+$closed_args = array_merge( $base_args, [
+    'tax_query' => [['taxonomy' => 'ticket_status', 'field' => 'slug', 'terms' => 'closed']],
+    'date_query' => [
+        [
+            'after' => date( 'Y-m-d' ) . ' 00:00:00',
+            'before' => date( 'Y-m-d' ) . ' 23:59:59',
+            'inclusive' => true,
+            'column' => 'post_modified',
+        ],
+    ],
+]);
+$closed_today_query = new WP_Query( $closed_args );
+$closed_today = $closed_today_query->found_posts;
+
+// Pagination setup
+$per_page = 5;
+$page = isset( $_GET['tpage'] ) ? max( 1, intval( $_GET['tpage'] ) ) : 1;
+$total_pages = ceil( count( $ticket_data ) / $per_page );
+$ticket_data_paginated = array_slice( $ticket_data, ( $page - 1 ) * $per_page, $per_page );
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Support Ticket System</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
 
-        body {
-            background-color: #f5f7fa;
-            color: #333;
-            line-height: 1.6;
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        header {
-            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-            color: white;
-            padding: 20px 0;
-            border-radius: 10px;
-            margin-bottom: 30px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-
-        .header-content {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0 20px;
-        }
-
-        .logo {
-            font-size: 24px;
-            font-weight: bold;
-        }
-
-        .search-bar {
-            flex-grow: 1;
-            margin: 0 20px;
-        }
-
-        .search-bar input {
-            width: 100%;
-            padding: 10px 15px;
-            border: none;
-            border-radius: 50px;
-            font-size: 16px;
-        }
-
-        .user-actions button {
-            background-color: white;
-            color: #2563eb;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 50px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .user-actions button:hover {
-            background-color: #e0e7ff;
-        }
-
-        .main-content {
-            display: flex;
-            gap: 20px;
-        }
-
-        .sidebar {
-            flex: 0 0 250px;
-            background-color: white;
-            border-radius: 10px;
-            padding: 20px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-        }
-
-        .sidebar h2 {
-            margin-bottom: 20px;
-            color: #1d4ed8;
-            border-bottom: 2px solid #e0e7ff;
-            padding-bottom: 10px;
-        }
-
-        .filters div {
-            margin-bottom: 15px;
-        }
-
-        .filters label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: 500;
-        }
-
-        .filters select, .filters input {
-            width: 100%;
-            padding: 8px 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-        }
-
-        .filters button {
-            width: 100%;
-            padding: 10px;
-            background-color: #2563eb;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: bold;
-            transition: background-color 0.3s ease;
-        }
-
-        .filters button:hover {
-            background-color: #1d4ed8;
-        }
-
-        .content {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-
-        .stats-cards {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-        }
-
-        .stat-card {
-            background-color: white;
-            border-radius: 10px;
-            padding: 20px;
-            text-align: center;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-        }
-
-        .stat-card h3 {
-            font-size: 14px;
-            color: #64748b;
-            margin-bottom: 10px;
-        }
-
-        .stat-card .number {
-            font-size: 28px;
-            font-weight: bold;
-            color: #1d4ed8;
-        }
-
-        .ticket-list {
-            background-color: white;
-            border-radius: 10px;
-            overflow: hidden;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-        }
-
-        .ticket-list-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 20px;
-            border-bottom: 1px solid #e0e7ff;
-        }
-
-        .ticket-list-header h2 {
-            color: #1d4ed8;
-        }
-
-        .new-ticket-btn {
-            background-color: #2563eb;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 50px;
-            font-weight: bold;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            transition: background-color 0.3s ease;
-        }
-
-        .new-ticket-btn:hover {
-            background-color: #1d4ed8;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        th, td {
-            padding: 15px 20px;
-            text-align: left;
-            border-bottom: 1px solid #e0e7ff;
-        }
-
-        th {
-            background-color: #f8fafc;
-            font-weight: 600;
-            color: #64748b;
-        }
-
-        tr {
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-
-        tr:hover {
-            background-color: #f1f5f9;
-        }
-
-        .status {
-            padding: 5px 10px;
-            border-radius: 50px;
-            font-size: 12px;
-            font-weight: 500;
-        }
-
-        .status-open {
-            background-color: #dcfce7;
-            color: #16a34a;
-        }
-
-        .status-pending {
-            background-color: #fef3c7;
-            color: #d97706;
-        }
-
-        .status-closed {
-            background-color: #fee2e2;
-            color: #dc2626;
-        }
-
-        .priority-high {
-            color: #dc2626;
-            font-weight: bold;
-        }
-
-        .priority-medium {
-            color: #d97706;
-            font-weight: bold;
-        }
-
-        .priority-low {
-            color: #16a34a;
-            font-weight: bold;
-        }
-
-        .action-btn {
-            background: none;
-            border: none;
-            color: #2563eb;
-            cursor: pointer;
-            font-size: 16px;
-        }
-
-        .pagination {
-            display: flex;
-            justify-content: center;
-            padding: 20px;
-            gap: 10px;
-        }
-
-        .pagination button {
-            padding: 8px 15px;
-            border: 1px solid #ddd;
-            background-color: white;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .pagination button.active {
-            background-color: #2563eb;
-            color: white;
-            border-color: #2563eb;
-        }
-
-        .pagination button:hover:not(.active) {
-            background-color: #f1f5f9;
-        }
-
-        /* Modal Styles */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            max-width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-            z-index: 1000;
-            justify-content: center;
-            align-items: center;
-        }
-
-        .modal-content {
-            background-color: white;
-            border-radius: 10px;
-            width: 100%;
-            height: 100%;
-            max-width: 100%;
-            max-height: 100%;
-            overflow-y: auto;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-        }
-
-        .modal-header {
-            padding: 20px;
-            border-bottom: 1px solid #e0e7ff;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .modal-header h2 {
-            color: #1d4ed8;
-        }
-
-        .close-btn {
-            background: none;
-            border: none;
-            font-size: 24px;
-            cursor: pointer;
-            color: #64748b;
-        }
-
-        .modal-body {
-            padding: 20px;
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 500;
-        }
-
-        .form-group input, .form-group select, .form-group textarea {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            font-size: 16px;
-        }
-
-        .form-group textarea {
-            min-height: 120px;
-            resize: vertical;
-        }
-
-        .modal-footer {
-            padding: 20px;
-            border-top: 1px solid #e0e7ff;
-            display: flex;
-            justify-content: flex-end;
-            gap: 10px;
-        }
-
-        .modal-footer button {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: bold;
-        }
-
-        .btn-primary {
-            background-color: #2563eb;
-            color: white;
-        }
-
-        .btn-secondary {
-            background-color: #e0e7ff;
-            color: #2563eb;
-        }
-
-        .ticket-details {
-            margin-bottom: 20px;
-        }
-
-        .ticket-details .detail-row {
-            display: flex;
-            margin-bottom: 15px;
-        }
-
-        .ticket-details .detail-label {
-            flex: 0 0 120px;
-            font-weight: 500;
-            color: #64748b;
-        }
-
-        .ticket-details .detail-value {
-            flex: 1;
-        }
-
-        .comments-section {
-            margin-top: 30px;
-        }
-
-        .comment {
-            border: 1px solid #e0e7ff;
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 15px;
-            background-color: #f8fafc;
-        }
-
-        .comment-header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 10px;
-            font-size: 14px;
-            color: #64748b;
-        }
-
-        .comment-text {
-            line-height: 1.5;
-        }
-
-        .add-comment {
-            margin-top: 20px;
-        }
-
-        /* TinyMCE Editor Styles */
-        .tox-tinymce {
-            border-radius: 5px !important;
-            border: 1px solid #ddd !important;
-        }
-
-        .editor-container {
-            border: 1px solid #ddd;
-            border-radius: 5px;
-        }
-
-        .editor-header {
-            background-color: #f8fafc;
-            padding: 10px;
-            border-bottom: 1px solid #e0e7ff;
-            display: flex;
-            gap: 5px;
-            flex-wrap: wrap;
-        }
-
-        .editor-header button {
-            background: none;
-            border: 1px solid #ddd;
-            border-radius: 3px;
-            padding: 5px 10px;
-            cursor: pointer;
-            font-size: 14px;
-        }
-
-        .editor-header button:hover {
-            background-color: #e0e7ff;
-        }
-
-        .editor-content {
-            min-height: 200px;
-            padding: 15px;
-            outline: none;
-        }
-
-        .editor-content:empty:before {
-            content: attr(data-placeholder);
-            color: #64748b;
-        }
-
-        @media (max-width: 768px) {
-            .main-content {
-                flex-direction: column;
-            }
-            
-            .sidebar {
-                flex: 0 0 auto;
-            }
-            
-            .stats-cards {
-                grid-template-columns: 1fr;
-            }
-            
-            .header-content {
-                flex-direction: column;
-                gap: 15px;
-            }
-            
-            .search-bar {
-                margin: 0;
-                width: 100%;
-            }
-            
-            .modal-content {
-                width: 95%;
-            }
-        }
-    </style>
-</head>
-<body>
-    <header style="max-width: 64.5%;">
-        <div class="container">
-            <div class="header-content">
-                <div class="logo">SupportHub</div>
-                <div class="search-bar">
-                    <input type="text" placeholder="Search tickets...">
+<div class="wsts_container">
+    <div class="wsts_header-content">
+        <div class="wsts_logo"><?php esc_html_e( 'SupportHub', 'wsts' ); ?></div>
+        <div class="wsts_search-bar">
+            <input type="text" placeholder="<?php esc_attr_e( 'Search tickets...', 'wsts' ); ?>">
+        </div>
+        <div class="wsts_user-actions">
+            <button id="wsts_header-new-ticket"><?php esc_html_e( 'New Ticket', 'wsts' ); ?></button>
+        </div>
+    </div>
+
+    <div class="wsts_main-content">
+        <div class="wsts_sidebar">
+            <h2><?php esc_html_e( 'Filters', 'wsts' ); ?></h2>
+            <div class="wsts_filters">
+                <div>
+                    <label for="wsts_status"><?php esc_html_e( 'Status', 'wsts' ); ?></label>
+                    <select id="wsts_status">
+                        <option value="all"><?php esc_html_e( 'All Statuses', 'wsts' ); ?></option>
+                        <?php foreach ( $statuses as $status ) : ?>
+                            <option value="<?php echo esc_attr( $status->slug ); ?>"><?php echo esc_html( $status->name ); ?></option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
-                <div class="user-actions">
-                    <button id="header-new-ticket">New Ticket</button>
+                <div>
+                    <label for="wsts_priority"><?php esc_html_e( 'Priority', 'wsts' ); ?></label>
+                    <select id="wsts_priority">
+                        <option value="all"><?php esc_html_e( 'All Priorities', 'wsts' ); ?></option>
+                        <?php foreach ( $priorities as $priority ) : ?>
+                            <option value="<?php echo esc_attr( $priority->slug ); ?>"><?php echo esc_html( $priority->name ); ?></option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
+                <div>
+                    <label for="wsts_date"><?php esc_html_e( 'Date', 'wsts' ); ?></label>
+                    <input type="date" id="wsts_date">
+                </div>
+                <div>
+                    <label for="wsts_search"><?php esc_html_e( 'Keyword', 'wsts' ); ?></label>
+                    <input type="text" id="wsts_search" placeholder="<?php esc_attr_e( 'Enter keyword...', 'wsts' ); ?>">
+                </div>
+                <button><?php esc_html_e( 'Apply Filters', 'wsts' ); ?></button>
             </div>
         </div>
-    </header>
 
-    <div class="container">
-        <div class="main-content">
-            <div class="sidebar">
-                <h2>Filters</h2>
-                <div class="filters">
-                    <div>
-                        <label for="status">Status</label>
-                        <select id="status">
-                            <option value="all">All Statuses</option>
-                            <option value="open">Open</option>
-                            <option value="pending">Pending</option>
-                            <option value="closed">Closed</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label for="priority">Priority</label>
-                        <select id="priority">
-                            <option value="all">All Priorities</option>
-                            <option value="high">High</option>
-                            <option value="medium">Medium</option>
-                            <option value="low">Low</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label for="date">Date</label>
-                        <input type="date" id="date">
-                    </div>
-                    <div>
-                        <label for="search">Keyword</label>
-                        <input type="text" id="search" placeholder="Enter keyword...">
-                    </div>
-                    <button>Apply Filters</button>
+        <div class="wsts_content">
+            <div class="wsts_stats-cards">
+                <div class="wsts_stat-card">
+                    <h3><?php esc_html_e( 'Open Tickets', 'wsts' ); ?></h3>
+                    <div class="wsts_number"><?php echo esc_html( $open ); ?></div>
+                </div>
+                <div class="wsts_stat-card">
+                    <h3><?php esc_html_e( 'Pending Tickets', 'wsts' ); ?></h3>
+                    <div class="wsts_number"><?php echo esc_html( $pending ); ?></div>
+                </div>
+                <div class="wsts_stat-card">
+                    <h3><?php esc_html_e( 'Closed Today', 'wsts' ); ?></h3>
+                    <div class="wsts_number"><?php echo esc_html( $closed_today ); ?></div>
+                </div>
+                <div class="wsts_stat-card">
+                    <h3><?php esc_html_e( 'Total Tickets', 'wsts' ); ?></h3>
+                    <div class="wsts_number"><?php echo esc_html( $total ); ?></div>
                 </div>
             </div>
 
-            <div class="content">
-                <div class="stats-cards">
-                    <div class="stat-card">
-                        <h3>Open Tickets</h3>
-                        <div class="number">24</div>
-                    </div>
-                    <div class="stat-card">
-                        <h3>Pending Tickets</h3>
-                        <div class="number">12</div>
-                    </div>
-                    <div class="stat-card">
-                        <h3>Closed Today</h3>
-                        <div class="number">8</div>
-                    </div>
-                    <div class="stat-card">
-                        <h3>Total Tickets</h3>
-                        <div class="number">142</div>
-                    </div>
+            <div class="wsts_ticket-list">
+                <div class="wsts_ticket-list-header">
+                    <h2><?php esc_html_e( 'Recent Tickets', 'wsts' ); ?></h2>
+                    <button class="wsts_new-ticket-btn" id="wsts_new-ticket-btn">
+                        <i class="fas fa-plus"></i> <?php esc_html_e( 'New Ticket', 'wsts' ); ?>
+                    </button>
                 </div>
-
-                <div class="ticket-list">
-                    <div class="ticket-list-header">
-                        <h2>Recent Tickets</h2>
-                        <button class="new-ticket-btn" id="new-ticket-btn">
-                            <i class="fas fa-plus"></i> New Ticket
-                        </button>
-                    </div>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Subject</th>
-                                <th>Requester</th>
-                                <th>Status</th>
-                                <th>Priority</th>
-                                <th>Created</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tickets-table-body">
-                            <!-- Tickets will be dynamically added here -->
-                        </tbody>
-                    </table>
-                    <div class="pagination">
-                        <button class="active">1</button>
-                        <button>2</button>
-                        <button>3</button>
-                        <button>4</button>
-                        <button>5</button>
-                    </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th><?php esc_html_e( 'ID', 'wsts' ); ?></th>
+                            <th><?php esc_html_e( 'Subject', 'wsts' ); ?></th>
+                            <th><?php esc_html_e( 'Requester', 'wsts' ); ?></th>
+                            <th><?php esc_html_e( 'Status', 'wsts' ); ?></th>
+                            <th><?php esc_html_e( 'Priority', 'wsts' ); ?></th>
+                            <th><?php esc_html_e( 'Created', 'wsts' ); ?></th>
+                            <th><?php esc_html_e( 'Actions', 'wsts' ); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody id="wsts_tickets-table-body">
+                        <?php if ( ! empty( $ticket_data_paginated ) ) : ?>
+                            <?php foreach ( $ticket_data_paginated as $ticket ) : ?>
+                                <tr data-id="<?php echo esc_attr( $ticket['id'] ); ?>">
+                                    <td>#<?php echo esc_html( $ticket['id'] ); ?></td>
+                                    <td><?php echo esc_html( $ticket['subject'] ); ?></td>
+                                    <td><?php echo esc_html( $ticket['requester'] ); ?></td>
+                                    <td><span class="wsts_status wsts_status-<?php echo esc_attr( $ticket['status'] ); ?>"><?php echo esc_html( $ticket['status_name'] ); ?></span></td>
+                                    <td class="wsts_priority-<?php echo esc_attr( $ticket['priority'] ); ?>"><?php echo esc_html( $ticket['priority_name'] ); ?></td>
+                                    <td><?php echo esc_html( $ticket['created'] ); ?></td>
+                                    <td><button class="wsts_action-btn" data-id="<?php echo esc_attr( $ticket['id'] ); ?>"><i class="fas fa-eye"></i></button></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php else : ?>
+                            <tr><td colspan="7"><?php esc_html_e( 'You have not created any tickets yet.', 'wsts' ); ?></td></tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+                <div class="wsts_pagination">
+                    <?php for ( $i = 1; $i <= $total_pages; $i++ ) : ?>
+                        <button class="<?php echo $i === $page ? 'wsts_active' : ''; ?>" onclick="window.location.href='?tpage=<?php echo $i; ?>'"><?php echo $i; ?></button>
+                    <?php endfor; ?>
                 </div>
             </div>
         </div>
     </div>
+</div>
 
-    <!-- New Ticket Modal -->
-    <div class="modal" id="new-ticket-modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Create New Ticket</h2>
-                <button class="close-btn">&times;</button>
+<!-- New Ticket Modal -->
+<div class="wsts_modal" id="wsts_new-ticket-modal">
+    <div class="wsts_modal-content">
+        <div class="wsts_modal-header">
+            <h2><?php esc_html_e( 'Create New Ticket', 'wsts' ); ?></h2>
+            <button class="wsts_close-btn">&times;</button>
+        </div>
+        <div class="wsts_modal-body">
+            <form id="wsts_new-ticket-form">
+                <div id="wsts_form-notice" style="display:none; color: red; margin-bottom: 20px;"></div>
+                <div class="wsts_form-group">
+                    <label for="wsts_subject"><?php esc_html_e( 'Subject', 'wsts' ); ?></label>
+                    <input type="text" id="wsts_subject" required>
+                </div>
+                <div class="wsts_form-group">
+                    <label for="wsts_ticket-type"><?php esc_html_e( 'Regarding', 'wsts' ); ?></label>
+                    <select id="wsts_ticket-type" required>
+                        <option value="general"><?php esc_html_e( 'General Inquiry', 'wsts' ); ?></option>
+                        <option value="payment"><?php esc_html_e( 'Payment Inquiry', 'wsts' ); ?></option>
+                        <?php if ( class_exists( 'WooCommerce' ) ) : ?>
+                            <option value="product"><?php esc_html_e( 'A Purchased Product', 'wsts' ); ?></option>
+                        <?php endif; ?>
+                    </select>
+                </div>
+                <div class="wsts_form-group" id="wsts_product-select-wrapper" style="display:none;">
+                    <label for="wsts_ticket-product"><?php esc_html_e( 'Select Product', 'wsts' ); ?></label>
+                    <select id="wsts_ticket-product">
+                        <option value=""><?php esc_html_e( 'Loading products...', 'wsts' ); ?></option>
+                    </select>
+                </div>
+                <div class="wsts_form-group">
+                    <label for="wsts_priority"><?php esc_html_e( 'Priority', 'wsts' ); ?></label>
+                    <select id="wsts_priority" required>
+                        <option value=""><?php esc_html_e( 'Select Priority', 'wsts' ); ?></option>
+                        <?php foreach ( $priorities as $priority ) : ?>
+                            <option value="<?php echo esc_attr( $priority->term_id ); ?>"><?php echo esc_html( $priority->name ); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="wsts_form-group">
+                    <label for="wsts_description"><?php esc_html_e( 'Description', 'wsts' ); ?></label>
+                    <div class="wsts_editor-container">
+                        <div class="wsts_editor-header">
+                            <button type="button" data-command="bold"><strong>B</strong></button>
+                            <button type="button" data-command="italic"><em>I</em></button>
+                            <button type="button" data-command="underline"><u>U</u></button>
+                            <button type="button" data-command="insertUnorderedList">• List</button>
+                            <button type="button" data-command="insertOrderedList">1. List</button>
+                            <button type="button" data-command="createLink">🔗 Link</button>
+                        </div>
+                        <div class="wsts_editor-content" id="wsts_description" contenteditable="true" data-placeholder="<?php esc_attr_e( 'Describe your issue in detail...', 'wsts' ); ?>"></div>
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="wsts_modal-footer">
+            <button class="wsts_btn-secondary" id="wsts_cancel-new-ticket"><?php esc_html_e( 'Cancel', 'wsts' ); ?></button>
+            <button class="wsts_btn-primary" id="wsts_submit-new-ticket"><?php esc_html_e( 'Create Ticket', 'wsts' ); ?></button>
+        </div>
+    </div>
+</div>
+
+<!-- View/Edit Ticket Modal -->
+<div class="wsts_modal" id="wsts_ticket-detail-modal">
+    <div class="wsts_modal-content">
+        <div class="wsts_modal-header">
+            <h2 id="wsts_ticket-modal-title"><?php esc_html_e( 'Ticket Details', 'wsts' ); ?></h2>
+            <button class="wsts_close-btn">&times;</button>
+        </div>
+        <div class="wsts_modal-body">
+            <div class="wsts_ticket-details">
+                <div class="wsts_detail-row">
+                    <div class="wsts_detail-label"><?php esc_html_e( 'Ticket ID:', 'wsts' ); ?></div>
+                    <div class="wsts_detail-value" id="wsts_detail-id"></div>
+                </div>
+                <div class="wsts_detail-row">
+                    <div class="wsts_detail-label"><?php esc_html_e( 'Subject:', 'wsts' ); ?></div>
+                    <div class="wsts_detail-value" id="wsts_detail-subject"></div>
+                </div>
+                <div class="wsts_detail-row">
+                    <div class="wsts_detail-label"><?php esc_html_e( 'Requester:', 'wsts' ); ?></div>
+                    <div class="wsts_detail-value" id="wsts_detail-requester"></div>
+                </div>
+                <div class="wsts_detail-row">
+                    <div class="wsts_detail-label"><?php esc_html_e( 'Department:', 'wsts' ); ?></div>
+                    <div class="wsts_detail-value" id="wsts_detail-department"></div>
+                </div>
+                <div class="wsts_detail-row">
+                    <div class="wsts_detail-label"><?php esc_html_e( 'Priority:', 'wsts' ); ?></div>
+                    <div class="wsts_detail-value" id="wsts_detail-priority"></div>
+                </div>
+                <div class="wsts_detail-row">
+                    <div class="wsts_detail-label"><?php esc_html_e( 'Status:', 'wsts' ); ?></div>
+                    <div class="wsts_detail-value" id="wsts_detail-status"></div>
+                </div>
+                <div class="wsts_detail-row">
+                    <div class="wsts_detail-label"><?php esc_html_e( 'Created:', 'wsts' ); ?></div>
+                    <div class="wsts_detail-value" id="wsts_detail-created"></div>
+                </div>
+                <div class="wsts_detail-row">
+                    <div class="wsts_detail-label"><?php esc_html_e( 'Description:', 'wsts' ); ?></div>
+                    <div class="wsts_detail-value" id="wsts_detail-description"></div>
+                </div>
             </div>
-            <div class="modal-body">
-                <form id="new-ticket-form">
-                    <div class="form-group">
-                        <label for="subject">Subject</label>
-                        <input type="text" id="subject" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="requester">Requester Email</label>
-                        <input type="email" id="requester" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="department">Department</label>
-                        <select id="department" required>
-                            <option value="">Select Department</option>
-                            <option value="billing">Billing</option>
-                            <option value="technical">Technical Support</option>
-                            <option value="sales">Sales</option>
-                            <option value="general">General Inquiry</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="priority">Priority</label>
-                        <select id="priority" required>
-                            <option value="">Select Priority</option>
-                            <option value="low">Low</option>
-                            <option value="medium">Medium</option>
-                            <option value="high">High</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="description">Description</label>
-                        <!-- TinyMCE-like editor -->
-                        <div class="editor-container">
-                            <div class="editor-header">
+            <div class="wsts_comments-section">
+                <h3><?php esc_html_e( 'Comments', 'wsts' ); ?></h3>
+                <div id="wsts_comments-container"></div>
+                <div class="wsts_add-comment">
+                    <div class="wsts_form-group">
+                        <label for="wsts_new-comment"><?php esc_html_e( 'Add Comment', 'wsts' ); ?></label>
+                        <div class="wsts_editor-container">
+                            <div class="wsts_editor-header">
                                 <button type="button" data-command="bold"><strong>B</strong></button>
                                 <button type="button" data-command="italic"><em>I</em></button>
                                 <button type="button" data-command="underline"><u>U</u></button>
@@ -670,432 +329,19 @@
                                 <button type="button" data-command="insertOrderedList">1. List</button>
                                 <button type="button" data-command="createLink">🔗 Link</button>
                             </div>
-                            <div class="editor-content" id="description" contenteditable="true" data-placeholder="Describe your issue in detail..."></div>
+                            <div class="wsts_editor-content" id="wsts_new-comment" contenteditable="true" data-placeholder="<?php esc_attr_e( 'Type your comment here...', 'wsts' ); ?>"></div>
                         </div>
                     </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button class="btn-secondary" id="cancel-new-ticket">Cancel</button>
-                <button class="btn-primary" id="submit-new-ticket">Create Ticket</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- View/Edit Ticket Modal -->
-    <div class="modal" id="ticket-detail-modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 id="ticket-modal-title">Ticket Details</h2>
-                <button class="close-btn">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="ticket-details">
-                    <div class="detail-row">
-                        <div class="detail-label">Ticket ID:</div>
-                        <div class="detail-value" id="detail-id"></div>
-                    </div>
-                    <div class="detail-row">
-                        <div class="detail-label">Subject:</div>
-                        <div class="detail-value" id="detail-subject"></div>
-                    </div>
-                    <div class="detail-row">
-                        <div class="detail-label">Requester:</div>
-                        <div class="detail-value" id="detail-requester"></div>
-                    </div>
-                    <div class="detail-row">
-                        <div class="detail-label">Department:</div>
-                        <div class="detail-value" id="detail-department"></div>
-                    </div>
-                    <div class="detail-row">
-                        <div class="detail-label">Priority:</div>
-                        <div class="detail-value" id="detail-priority"></div>
-                    </div>
-                    <div class="detail-row">
-                        <div class="detail-label">Status:</div>
-                        <div class="detail-value" id="detail-status"></div>
-                    </div>
-                    <div class="detail-row">
-                        <div class="detail-label">Created:</div>
-                        <div class="detail-value" id="detail-created"></div>
-                    </div>
-                    <div class="detail-row">
-                        <div class="detail-label">Description:</div>
-                        <div class="detail-value" id="detail-description"></div>
-                    </div>
-                </div>
-
-                <div class="comments-section">
-                    <h3>Comments</h3>
-                    <div id="comments-container">
-                        <!-- Comments will be dynamically added here -->
-                    </div>
-                    <div class="add-comment">
-                        <div class="form-group">
-                            <label for="new-comment">Add Comment</label>
-                            <!-- TinyMCE-like editor for comments -->
-                            <div class="editor-container">
-                                <div class="editor-header">
-                                    <button type="button" data-command="bold"><strong>B</strong></button>
-                                    <button type="button" data-command="italic"><em>I</em></button>
-                                    <button type="button" data-command="underline"><u>U</u></button>
-                                    <button type="button" data-command="insertUnorderedList">• List</button>
-                                    <button type="button" data-command="insertOrderedList">1. List</button>
-                                    <button type="button" data-command="createLink">🔗 Link</button>
-                                </div>
-                                <div class="editor-content" id="new-comment" contenteditable="true" data-placeholder="Type your comment here..."></div>
-                            </div>
-                        </div>
-                        <button class="btn-primary" id="add-comment-btn">Add Comment</button>
-                    </div>
+                    <button class="wsts_btn-primary" id="wsts_add-comment-btn"><?php esc_html_e( 'Add Comment', 'wsts' ); ?></button>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button class="btn-secondary" id="close-ticket-details">Close</button>
-                <button class="btn-primary" id="edit-ticket-btn">Edit Ticket</button>
-                <button class="btn-primary" id="approve-ticket-btn" style="display: none;">Approve Ticket</button>
-            </div>
+        </div>
+        <div class="wsts_modal-footer">
+            <button class="wsts_btn-secondary" id="wsts_close-ticket-details"><?php esc_html_e( 'Close', 'wsts' ); ?></button>
+            <button class="wsts_btn-primary" id="wsts_edit-ticket-btn"><?php esc_html_e( 'Edit Ticket', 'wsts' ); ?></button>
+            <?php if ( current_user_can( 'manage_options' ) ) : ?>
+                <button class="wsts_btn-primary" id="wsts_approve-ticket-btn" style="display: none;"><?php esc_html_e( 'Approve Ticket', 'wsts' ); ?></button>
+            <?php endif; ?>
         </div>
     </div>
-
-    <script>
-        // Sample ticket data
-        let tickets = [
-            {
-                id: 1234,
-                subject: "Login issues",
-                requester: "john.doe@example.com",
-                status: "pending",
-                priority: "high",
-                created: "10 min ago",
-                department: "technical",
-                description: "I cannot log in to my account. I keep getting an error message saying my password is incorrect, but I'm sure I'm using the correct one."
-            },
-            {
-                id: 1233,
-                subject: "Payment not processing",
-                requester: "sara.smith@example.com",
-                status: "pending",
-                priority: "high",
-                created: "25 min ago",
-                department: "billing",
-                description: "I tried to make a payment but it keeps failing. My card has sufficient funds and is not expired."
-            },
-            {
-                id: 1232,
-                subject: "Feature request",
-                requester: "mark.johnson@example.com",
-                status: "open",
-                priority: "low",
-                created: "1 hour ago",
-                department: "sales",
-                description: "I would like to request a dark mode feature for the mobile app. It would be easier on the eyes during nighttime use."
-            },
-            {
-                id: 1231,
-                subject: "Website loading slow",
-                requester: "lisa.wang@example.com",
-                status: "closed",
-                priority: "medium",
-                created: "2 hours ago",
-                department: "technical",
-                description: "The website has been loading very slowly for the past day. Pages take over 10 seconds to load completely."
-            },
-            {
-                id: 1230,
-                subject: "Password reset",
-                requester: "robert.brown@example.com",
-                status: "open",
-                priority: "medium",
-                created: "3 hours ago",
-                department: "technical",
-                description: "I need to reset my password but the reset email is not arriving in my inbox."
-            }
-        ];
-
-        // DOM Elements
-        const newTicketBtn = document.getElementById('new-ticket-btn');
-        const headerNewTicketBtn = document.getElementById('header-new-ticket');
-        const newTicketModal = document.getElementById('new-ticket-modal');
-        const ticketDetailModal = document.getElementById('ticket-detail-modal');
-        const closeButtons = document.querySelectorAll('.close-btn');
-        const cancelNewTicketBtn = document.getElementById('cancel-new-ticket');
-        const submitNewTicketBtn = document.getElementById('submit-new-ticket');
-        const closeTicketDetailsBtn = document.getElementById('close-ticket-details');
-        const editTicketBtn = document.getElementById('edit-ticket-btn');
-        const approveTicketBtn = document.getElementById('approve-ticket-btn');
-        const ticketsTableBody = document.getElementById('tickets-table-body');
-        const newTicketForm = document.getElementById('new-ticket-form');
-        const editorButtons = document.querySelectorAll('.editor-header button');
-
-        // Initialize the app
-        function init() {
-            renderTickets();
-            setupEventListeners();
-            setupEditor();
-        }
-
-        // Render tickets to the table
-        function renderTickets() {
-            ticketsTableBody.innerHTML = '';
-            
-            tickets.forEach(ticket => {
-                const row = document.createElement('tr');
-                row.dataset.id = ticket.id;
-                
-                row.innerHTML = `
-                    <td>#${ticket.id}</td>
-                    <td>${ticket.subject}</td>
-                    <td>${ticket.requester}</td>
-                    <td><span class="status status-${ticket.status}">${ticket.status.charAt(0).toUpperCase() + ticket.status.slice(1)}</span></td>
-                    <td class="priority-${ticket.priority}">${ticket.priority.charAt(0).toUpperCase() + ticket.priority.slice(1)}</td>
-                    <td>${ticket.created}</td>
-                    <td><button class="action-btn"><i class="fas fa-eye"></i></button></td>
-                `;
-                
-                ticketsTableBody.appendChild(row);
-            });
-        }
-
-        // Setup event listeners
-        function setupEventListeners() {
-            // Open new ticket modal
-            newTicketBtn.addEventListener('click', () => openModal(newTicketModal));
-            headerNewTicketBtn.addEventListener('click', () => openModal(newTicketModal));
-            
-            // Close modals
-            closeButtons.forEach(button => {
-                button.addEventListener('click', closeModals);
-            });
-            
-            cancelNewTicketBtn.addEventListener('click', closeModals);
-            closeTicketDetailsBtn.addEventListener('click', closeModals);
-            
-            // Submit new ticket
-            submitNewTicketBtn.addEventListener('click', createNewTicket);
-            
-            // Edit ticket
-            editTicketBtn.addEventListener('click', enableEditMode);
-            
-            // Approve ticket
-            approveTicketBtn.addEventListener('click', approveTicket);
-            
-            // Add comment
-            document.getElementById('add-comment-btn').addEventListener('click', addComment);
-            
-            // Click on ticket row
-            ticketsTableBody.addEventListener('click', (e) => {
-                const row = e.target.closest('tr');
-                if (row) {
-                    const ticketId = parseInt(row.dataset.id);
-                    const ticket = tickets.find(t => t.id === ticketId);
-                    if (ticket) {
-                        showTicketDetails(ticket);
-                    }
-                }
-            });
-            
-            // Close modal when clicking outside
-            window.addEventListener('click', (e) => {
-                if (e.target === newTicketModal) closeModals();
-                if (e.target === ticketDetailModal) closeModals();
-            });
-        }
-
-        // Setup editor functionality
-        function setupEditor() {
-            editorButtons.forEach(button => {
-                button.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    const command = button.dataset.command;
-                    const value = button.dataset.value || null;
-                    document.execCommand(command, false, value);
-                    
-                    // Focus back on the editor
-                    document.querySelector('.editor-content:focus')?.focus();
-                });
-            });
-        }
-
-        // Open a modal
-        function openModal(modal) {
-            modal.style.display = 'flex';
-        }
-
-        // Close all modals
-        function closeModals() {
-            newTicketModal.style.display = 'none';
-            ticketDetailModal.style.display = 'none';
-            document.getElementById('subject').value = '';
-            document.getElementById('requester').value = '';
-            document.getElementById('department').value = '';
-            document.getElementById('priority').value = '';
-            document.getElementById('description').innerHTML = '';
-        }
-
-        // Create a new ticket
-        function createNewTicket() {
-            const subject = document.getElementById('subject').value;
-            const requester = document.getElementById('requester').value;
-            const department = document.getElementById('department').value;
-            const priority = document.getElementById('priority').value;
-            const description = document.getElementById('description').innerHTML;
-            
-            if (!subject || !requester || !department || !priority || !description) {
-                alert('Please fill in all fields');
-                return;
-            }
-            
-            // Generate a new ticket ID
-            const newId = Math.max(...tickets.map(t => t.id)) + 1;
-            
-            // Create new ticket object
-            const newTicket = {
-                id: newId,
-                subject,
-                requester,
-                department,
-                priority,
-                description,
-                status: 'pending', // New tickets are pending by default
-                created: 'Just now',
-                comments: []
-            };
-            
-            // Add to tickets array
-            tickets.unshift(newTicket);
-            
-            // Re-render tickets
-            renderTickets();
-            
-            // Close modal and reset form
-            closeModals();
-            
-            // Show success message
-            alert('Ticket created successfully! It is now pending admin approval.');
-        }
-
-        // Show ticket details
-        function showTicketDetails(ticket) {
-            document.getElementById('ticket-modal-title').textContent = `Ticket #${ticket.id}`;
-            document.getElementById('detail-id').textContent = `#${ticket.id}`;
-            document.getElementById('detail-subject').textContent = ticket.subject;
-            document.getElementById('detail-requester').textContent = ticket.requester;
-            document.getElementById('detail-department').textContent = ticket.department.charAt(0).toUpperCase() + ticket.department.slice(1);
-            document.getElementById('detail-priority').textContent = ticket.priority.charAt(0).toUpperCase() + ticket.priority.slice(1);
-            document.getElementById('detail-status').textContent = ticket.status.charAt(0).toUpperCase() + ticket.status.slice(1);
-            document.getElementById('detail-created').textContent = ticket.created;
-            document.getElementById('detail-description').innerHTML = ticket.description;
-            
-            // Show/hide approve button based on status
-            if (ticket.status === 'pending') {
-                approveTicketBtn.style.display = 'block';
-            } else {
-                approveTicketBtn.style.display = 'none';
-            }
-            
-            // Render comments
-            const commentsContainer = document.getElementById('comments-container');
-            commentsContainer.innerHTML = '';
-            
-            if (ticket.comments && ticket.comments.length > 0) {
-                ticket.comments.forEach(comment => {
-                    const commentElement = document.createElement('div');
-                    commentElement.className = 'comment';
-                    commentElement.innerHTML = `
-                        <div class="comment-header">
-                            <span class="comment-author">${comment.author}</span>
-                            <span class="comment-date">${comment.date}</span>
-                        </div>
-                        <div class="comment-text">${comment.text}</div>
-                    `;
-                    commentsContainer.appendChild(commentElement);
-                });
-            } else {
-                commentsContainer.innerHTML = '<p>No comments yet.</p>';
-            }
-            
-            // Reset new comment textarea
-            document.getElementById('new-comment').innerHTML = '';
-            
-            // Open the modal
-            openModal(ticketDetailModal);
-        }
-
-        // Enable edit mode for ticket
-        function enableEditMode() {
-            alert('Edit functionality would open a form to modify ticket details.');
-            // In a real application, this would convert the detail view to editable form fields
-        }
-
-        // Approve a pending ticket
-        function approveTicket() {
-            const ticketId = parseInt(document.getElementById('detail-id').textContent.replace('#', ''));
-            const ticketIndex = tickets.findIndex(t => t.id === ticketId);
-            
-            if (ticketIndex !== -1) {
-                tickets[ticketIndex].status = 'open';
-                renderTickets();
-                approveTicketBtn.style.display = 'none';
-                document.getElementById('detail-status').textContent = 'Open';
-                
-                alert('Ticket approved! It is now open for comments.');
-            }
-        }
-
-        // Add a comment to the ticket
-        function addComment() {
-            const commentText = document.getElementById('new-comment').innerHTML;
-            
-            if (!commentText || commentText === '<br>') {
-                alert('Please enter a comment');
-                return;
-            }
-            
-            const ticketId = parseInt(document.getElementById('detail-id').textContent.replace('#', ''));
-            const ticketIndex = tickets.findIndex(t => t.id === ticketId);
-            
-            if (ticketIndex !== -1) {
-                const newComment = {
-                    author: 'Current User',
-                    date: 'Just now',
-                    text: commentText
-                };
-                
-                if (!tickets[ticketIndex].comments) {
-                    tickets[ticketIndex].comments = [];
-                }
-                
-                tickets[ticketIndex].comments.push(newComment);
-                
-                // Update the UI
-                const commentsContainer = document.getElementById('comments-container');
-                const commentElement = document.createElement('div');
-                commentElement.className = 'comment';
-                commentElement.innerHTML = `
-                    <div class="comment-header">
-                        <span class="comment-author">${newComment.author}</span>
-                        <span class="comment-date">${newComment.date}</span>
-                    </div>
-                    <div class="comment-text">${newComment.text}</div>
-                `;
-                commentsContainer.appendChild(commentElement);
-                
-                // Clear the editor
-                document.getElementById('new-comment').innerHTML = '';
-                
-                // If the ticket was pending, approve it automatically when an admin comments
-                if (tickets[ticketIndex].status === 'pending') {
-                    tickets[ticketIndex].status = 'open';
-                    renderTickets();
-                    approveTicketBtn.style.display = 'none';
-                    document.getElementById('detail-status').textContent = 'Open';
-                }
-            }
-        }
-
-        // Initialize the application
-        document.addEventListener('DOMContentLoaded', init);
-    </script>
-</body>
-</html>
+</div>
