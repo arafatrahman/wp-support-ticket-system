@@ -10,7 +10,7 @@
     // Initialize ticket data from localized script
     const tickets = window.wsts_ajax.tickets || [];
     const isAdmin = window.wsts_ajax.is_admin;
-    const currentUserId = <?php echo get_current_user_id(); ?>; // Added via PHP
+    const currentUserId = window.wsts_ajax.currentUserId; // Access currentUserId from wsts_ajax
 
     // DOM Elements
     const elements = {
@@ -237,7 +237,6 @@
         document.getElementById('wsts_subject').value = '';
         document.getElementById('wsts_ticket-type').value = 'general';
         document.getElementById('wsts_ticket-product').value = '';
-        document.getElementById('wsts_priority').value = '';
         tinymce.get('wsts_description').setContent(''); // Use TinyMCE for description
         tinymce.get('wsts_new-comment').setContent(''); // Use TinyMCE for comment
         document.getElementById('wsts_form-notice').style.display = 'none';
@@ -435,3 +434,14 @@
     // Initialize on DOM load
     document.addEventListener('DOMContentLoaded', init);
 })(jQuery);
+
+
+document.addEventListener('DOMContentLoaded', function() {
+    var wpEditorWrap = document.querySelector("#wp-wsts_description-wrap .wp-editor-tabs");
+    if (wpEditorWrap) {
+        var textTab = wpEditorWrap.querySelector(".switch-html");
+        if (textTab) textTab.style.display = "none";
+        var visualTab = wpEditorWrap.querySelector(".switch-tmce");
+        if (visualTab) visualTab.style.display = "none";
+    }
+});

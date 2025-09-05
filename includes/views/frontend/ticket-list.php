@@ -62,6 +62,8 @@ wp_localize_script( 'wsts-ticket-list', 'wsts_ajax', [
     'nonce' => wp_create_nonce( 'wsts_nonce' ),
     'is_admin' => $is_admin,
     'tickets' => $ticket_data,
+
+
 ] );
 
 // Calculate stats (for admins only)
@@ -253,6 +255,7 @@ $ticket_data_paginated = array_slice( $ticket_data, ( $page - 1 ) * $per_page, $
                         <?php endforeach; ?>
                     </select>
                 </div>
+
                 <div class="wsts_form-group">
                     <label for="wsts_description"><?php esc_html_e( 'Description', 'wsts' ); ?></label>
                     <?php
@@ -267,13 +270,45 @@ $ticket_data_paginated = array_slice( $ticket_data, ( $page - 1 ) * $per_page, $
                             'toolbar1' => 'formatselect bold italic underline strikethrough | bullist numlist outdent indent | blockquote | alignleft aligncenter alignright | link unlink | wp_more | spellchecker',
                             'toolbar2' => 'styleselect forecolor backcolor | hr removeformat | subscript superscript | code charmap | pastetext pasteword | undo redo | wp_help',
                             'plugins' => 'charmap colorpicker hr image lists media paste textcolor wordpress wpautoresize wpdialogs wpeditimage wpemoji wpgallery wplink wptextpattern wpview', // Removed 'table'
-                            'menubar' => true,
+                            'menubar' => false, // Disable the entire menubar
                             'statusbar' => true,
+                            'mode' => 'tmce', // Force Visual mode
+                            'setup' => 'function(editor) {
+                                editor.on("init", function() {
+                                    // Force Visual mode and hide Text tab
+                                    editor.mode.set("tmce"); // Ensure Visual mode is active
+                                    // Wait for the editor to be fully rendered
+                                    setTimeout(function() {
+                                        var wpEditorWrap = document.querySelector("#wp-wsts_description-wrap");
+                                        if (wpEditorWrap) {
+                                            var switchEditors = wpEditorWrap.querySelector(".wp-editor-tabs");
+                                            if (switchEditors) {
+                                                var textTab = switchEditors.querySelector(".switch-html");
+                                                if (textTab) {
+                                                    textTab.style.display = "none"; // Hide Text tab
+                                                }
+                                                var visualTab = switchEditors.querySelector(".switch-tmce");
+                                                if (visualTab) {
+                                                    visualTab.style.display = "none"; // Optionally hide Visual tab to avoid confusion
+                                                }
+                                            }
+                                        }
+                                    }, 100); // Small delay to ensure DOM is ready
+                                });
+                                editor.on("BeforeSetMode", function(e) {
+                                    if (e.mode === "html") {
+                                        e.preventDefault(); // Prevent switching to Text mode
+                                        editor.mode.set("tmce"); // Force back to Visual mode
+                                    }
+                                });
+                            }',
                         ],
                     ];
                     wp_editor( '', 'wsts_description', $editor_settings );
                     ?>
                 </div>
+
+
             </form>
         </div>
         <div class="wsts_modal-footer">
