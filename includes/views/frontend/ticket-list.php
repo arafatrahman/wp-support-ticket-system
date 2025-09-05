@@ -265,8 +265,8 @@ $ticket_data_paginated = array_slice( $ticket_data, ( $page - 1 ) * $per_page, $
                         'quicktags' => true,
                         'tinymce' => [
                             'toolbar1' => 'formatselect bold italic underline strikethrough | bullist numlist outdent indent | blockquote | alignleft aligncenter alignright | link unlink | wp_more | spellchecker',
-                            'toolbar2' => 'styleselect forecolor backcolor | table | hr removeformat | subscript superscript | code charmap | pastetext pasteword | undo redo | wp_help',
-                            'plugins' => 'charmap colorpicker hr image lists media paste table textcolor wordpress wpautoresize wpdialogs wpeditimage wpemoji wpgallery wplink wptextpattern wpview',
+                            'toolbar2' => 'styleselect forecolor backcolor | hr removeformat | subscript superscript | code charmap | pastetext pasteword | undo redo | wp_help',
+                            'plugins' => 'charmap colorpicker hr image lists media paste textcolor wordpress wpautoresize wpdialogs wpeditimage wpemoji wpgallery wplink wptextpattern wpview', // Removed 'table'
                             'menubar' => true,
                             'statusbar' => true,
                         ],
@@ -342,7 +342,7 @@ $ticket_data_paginated = array_slice( $ticket_data, ( $page - 1 ) * $per_page, $
                             'tinymce' => [
                                 'toolbar1' => 'bold,italic,underline,bullist,numlist,link,unlink',
                                 'toolbar2' => '',
-                                'plugins' => 'lists,link',
+                                'plugins' => 'lists,link', // Removed 'table'
                             ],
                         ];
                         wp_editor( '', 'wsts_new-comment', $comment_editor_settings );
