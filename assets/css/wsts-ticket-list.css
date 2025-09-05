@@ -992,3 +992,32 @@ tr:hover {
 .wsts_comment-header .wsts_comment-author:contains('(Admin)'):after {
     content: 'Admin';
 }
+
+.wsts_action-btn {
+    display: inline-block;
+    padding: 5px 10px;
+    background-color: #2563eb; /* Example color, adjust as needed */
+    color: white;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1; /* Ensure icon aligns properly */
+    vertical-align: middle; /* Align icon with text if any */
+}
+
+.wsts_action-btn:hover {
+    background-color: #1d4ed8; /* Darker shade on hover */
+}
+
+.wsts_action-btn .dashicons {
+    font-size: 18px; /* Adjust size of Dashicon */
+    vertical-align: middle; /* Align icon vertically */
+    margin-right: 0; /* No margin since no text follows */
+}
+
+/* Ensure table cell is wide enough */
+#wsts_tickets-table-body td:last-child {
+    width: 60px; /* Adjust as needed */
+    text-align: center;
+}

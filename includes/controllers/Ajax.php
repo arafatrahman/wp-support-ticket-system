@@ -83,19 +83,14 @@ if ( ! class_exists( 'WSTS_Ajax_Controller' ) ) {
         }
 
         public function get_single_ticket_html() {
-            check_ajax_referer( 'wsts_nonce', 'nonce' );
-
-            if ( ! is_user_logged_in() ) {
-                wp_send_json_error( ['message' => 'You must be logged in.'] );
+           check_ajax_referer('wsts_nonce', 'nonce');
+            $ticket_id = intval($_POST['ticket_id']);
+            if (!$ticket_id || !get_post($ticket_id) || get_post_type($ticket_id) !== 'support_ticket') {
+                wp_send_json_error(['message' => 'Invalid ticket ID']);
+                return;
             }
-
-            $ticket_id = intval( $_POST['ticket_id'] );
-
-            ob_start();
-            WSTS_Frontend_Controller::render_single_ticket( $ticket_id );
-            $html = ob_get_clean();
-
-            wp_send_json_success( ['html' => $html] );
+            // Fetch ticket data and return
+            wp_send_json_success(['data' => 'Ticket data here']);
         }
 
         public function add_comment() {

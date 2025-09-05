@@ -25,6 +25,7 @@ $tickets_query = $is_admin ? new WP_Query([
     'posts_per_page' => -1,
     'post_status' => 'any',
 ]) : WSTS_Ticket_Model::get_user_tickets( $user_id );
+
 $priorities = get_terms( ['taxonomy' => 'ticket_priority', 'hide_empty' => false] );
 $statuses = get_terms( ['taxonomy' => 'ticket_status', 'hide_empty' => false] );
 $ticket_data = [];
@@ -234,7 +235,12 @@ $ticket_data_paginated = array_slice( $ticket_data, ( $page - 1 ) * $per_page, $
                 <div class="wsts_form-group">
                     <label for="wsts_ticket-type"><?php esc_html_e( 'Regarding', 'wsts' ); ?></label>
                     <select id="wsts_ticket-type" required>
-                        <option value="general"><?php esc_html_e( 'General Inquiry', 'wsts' ); ?></option>
+                    <option value="general"><?php esc_html_e( 'General Inquiry', 'wsts' ); ?></option>
+                    <option value="support"><?php esc_html_e( 'Technical Support', 'wsts' ); ?></option>
+                    <option value="billing"><?php esc_html_e( 'Billing & Payments', 'wsts' ); ?></option>
+                    <option value="partnership"><?php esc_html_e( 'Partnership Request', 'wsts' ); ?></option>
+                    <option value="feedback"><?php esc_html_e( 'Feedback / Suggestions', 'wsts' ); ?></option>
+                    <option value="other"><?php esc_html_e( 'Other', 'wsts' ); ?></option>
                         <?php if ( class_exists( 'WooCommerce' ) ) : ?>
                             <option value="product"><?php esc_html_e( 'A Purchased Product', 'wsts' ); ?></option>
                         <?php endif; ?>

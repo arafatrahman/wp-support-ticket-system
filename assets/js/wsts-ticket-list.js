@@ -10,7 +10,7 @@
     // Initialize ticket data from localized script
     const tickets = window.wsts_ajax.tickets || [];
     const isAdmin = window.wsts_ajax.is_admin;
-    const currentUserId = window.wsts_ajax.currentUserId; // Access currentUserId from wsts_ajax
+    const currentUserId = window.wsts_ajax.currentUserId;
 
     // DOM Elements
     const elements = {
@@ -39,6 +39,7 @@
      * Initialize the application
      */
     function init() {
+        console.log('Tickets data:', tickets); // Debug: Log tickets to verify data
         renderTickets();
         setupEventListeners();
         setupEditor();
@@ -78,6 +79,9 @@
             });
         }
 
+        // Debug: Log filtered tickets
+        console.log('Filtered tickets:', filteredTickets);
+
         // Paginate filtered tickets
         const urlParams = new URLSearchParams(window.location.search);
         const currentPage = parseInt(urlParams.get('tpage') || '1');
@@ -92,14 +96,15 @@
         paginatedTickets.forEach(ticket => {
             const row = document.createElement('tr');
             row.dataset.id = ticket.id;
+            const ticketId = ticket.id ? ticket.id : 'unknown';
             row.innerHTML = `
-                <td>#${ticket.id}</td>
-                <td>${ticket.subject}</td>
-                <td>${ticket.requester}</td>
-                <td><span class="wsts_status wsts_status-${ticket.status}">${ticket.status_name}</span></td>
-                <td class="wsts_priority-${ticket.priority}">${ticket.priority_name}</td>
-                <td>${ticket.created}</td>
-                <td><button class="wsts_action-btn" data-id="${ticket.id}"><i class="fas fa-eye"></i></button></td>
+                <td>#${ticketId}</td>
+                <td>${ticket.subject || 'No subject'}</td>
+                <td>${ticket.requester || 'No requester'}</td>
+                <td><span class="wsts_status wsts_status-${ticket.status || 'pending'}">${ticket.status_name || 'Pending'}</span></td>
+                <td class="wsts_priority-${ticket.priority || 'low'}">${ticket.priority_name || 'Low'}</td>
+                <td>${ticket.created || 'N/A'}</td>
+                <td><button class="wsts_action-btn" data-id="${ticketId}"><span class="dashicons dashicons-visibility"></span></button></td>
             `;
             elements.ticketsTableBody.appendChild(row);
         });
@@ -285,20 +290,24 @@
      * @param {number} ticketId - The ID of the ticket to display
      */
     function getSingleTicketHtml(ticketId) {
-        if (!ticketId) {
+        if (!ticketId || isNaN(ticketId)) {
             console.error('Invalid ticket ID:', ticketId);
+            alert('Invalid ticket ID. Please try again.');
             return;
         }
 
+        console.log('Fetching ticket details for ID:', ticketId); // Debug: Log the ID being sent
         $.post(wsts_ajax.ajax_url, {
             action: 'wsts_get_single_ticket_html',
             nonce: wsts_ajax.nonce,
             ticket_id: ticketId
         }, function(resp) {
+            console.log('AJAX response:', resp); // Debug: Log the server response
             if (resp.success) {
                 const ticket = tickets.find(t => t.id === ticketId);
                 if (!ticket) {
                     console.error('Ticket not found in local data:', ticketId);
+                    alert('Ticket not found in local data.');
                     return;
                 }
 
@@ -331,7 +340,7 @@
                 commentsContainer.innerHTML = '';
                 if (ticket.comments && ticket.comments.length > 0) {
                     ticket.comments.forEach(comment => {
-                        const isAdminComment = comment.user_id && user_can( comment.user_id, 'manage_options' );
+                        const isAdminComment = comment.user_id && user_can(comment.user_id, 'manage_options');
                         const commentElement = document.createElement('div');
                         commentElement.className = 'wsts_comment';
                         commentElement.innerHTML = `
@@ -353,11 +362,11 @@
                 openModal(elements.ticketDetailModal);
             } else {
                 console.error('AJAX error for ticket ID:', ticketId, resp.data);
-                alert('Failed to load ticket details. Please try again.');
+                alert('Failed to load ticket details: ' + (resp.data.message || 'Unknown error'));
             }
         }).fail(function(xhr, status, error) {
-            console.error('AJAX request failed:', status, error);
-            alert('An error occurred while loading ticket details.');
+            console.error('AJAX request failed for ticket ID:', ticketId, 'Status:', status, 'Error:', error);
+            alert('An error occurred while loading ticket details: ' + status + ' - ' + error);
         });
     }
 
