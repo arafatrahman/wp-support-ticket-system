@@ -13,13 +13,18 @@ if ( ! is_user_logged_in() ) {
 }
 
 // Enqueue styles and scripts
-wp_enqueue_style( 'wsts-ticket-list', WSTS_PLUGIN_URL . 'assets/css/wsts-ticket-list.css', [], '1.0.2' );
-wp_enqueue_script( 'wsts-ticket-list', WSTS_PLUGIN_URL . 'assets/js/wsts-ticket-list.js', ['jquery'], '1.0.2', true );
+wp_enqueue_style( 'wsts-ticket-list', WSTS_PLUGIN_URL . 'assets/css/wsts-ticket-list.css', [], '1.0.5' );
+wp_enqueue_script( 'wsts-ticket-list', WSTS_PLUGIN_URL . 'assets/js/wsts-ticket-list.js', ['jquery'], '1.0.5', true );
+wp_enqueue_editor(); // Enqueue TinyMCE and dependencies
 
-// Fetch ticket data
+// Localize script with all data
 $user_id = get_current_user_id();
-$user = wp_get_current_user();
-$tickets_query = WSTS_Ticket_Model::get_user_tickets( $user_id );
+$is_admin = current_user_can( 'manage_options' );
+$tickets_query = $is_admin ? new WP_Query([
+    'post_type' => 'support_ticket',
+    'posts_per_page' => -1,
+    'post_status' => 'any',
+]) : WSTS_Ticket_Model::get_user_tickets( $user_id );
 $priorities = get_terms( ['taxonomy' => 'ticket_priority', 'hide_empty' => false] );
 $statuses = get_terms( ['taxonomy' => 'ticket_status', 'hide_empty' => false] );
 $ticket_data = [];
@@ -33,10 +38,11 @@ if ( $tickets_query->have_posts() ) {
         $priority = ( $priority_terms && ! is_wp_error( $priority_terms ) ) ? array_shift( $priority_terms ) : null;
         $product_id = get_post_meta( $ticket_id, '_wsts_product_id', true );
         $product_name = $product_id ? get_the_title( $product_id ) : 'General Service';
+        $ticket_owner_id = get_post_meta( $ticket_id, '_wsts_user_id', true );
         $ticket_data[] = [
             'id' => $ticket_id,
             'subject' => get_the_title(),
-            'requester' => $user->user_email,
+            'requester' => get_userdata( $ticket_owner_id )->user_email,
             'status' => $status ? $status->slug : 'pending',
             'status_name' => $status ? $status->name : 'Pending',
             'priority' => $priority ? $priority->slug : 'low',
@@ -45,38 +51,37 @@ if ( $tickets_query->have_posts() ) {
             'department' => $product_id ? 'product' : 'general',
             'description' => get_the_content(),
             'comments' => get_comments( ['post_id' => $ticket_id] ),
+            'owner_id' => $ticket_owner_id,
         ];
     }
     wp_reset_postdata();
 }
 
-// Localize script with all data
 wp_localize_script( 'wsts-ticket-list', 'wsts_ajax', [
     'ajax_url' => admin_url( 'admin-ajax.php' ),
     'nonce' => wp_create_nonce( 'wsts_nonce' ),
-    'is_admin' => current_user_can( 'manage_options' ),
+    'is_admin' => $is_admin,
     'tickets' => $ticket_data,
 ] );
 
-// Calculate stats
+// Calculate stats (for admins only)
 $base_args = [
     'post_type' => 'support_ticket',
     'posts_per_page' => -1,
-    'meta_query' => [['key' => '_wsts_user_id', 'value' => $user_id, 'compare' => '=']],
     'post_status' => 'any',
 ];
 $total_query = new WP_Query( $base_args );
-$total = $total_query->found_posts;
+$total = $is_admin ? $total_query->found_posts : count( array_filter( $ticket_data, fn($t) => $t['owner_id'] == $user_id ) );
 $open_args = array_merge( $base_args, [
     'tax_query' => [['taxonomy' => 'ticket_status', 'field' => 'slug', 'terms' => 'open']],
 ]);
 $open_query = new WP_Query( $open_args );
-$open = $open_query->found_posts;
+$open = $is_admin ? $open_query->found_posts : count( array_filter( $ticket_data, fn($t) => $t['owner_id'] == $user_id && $t['status'] == 'open' ) );
 $pending_args = array_merge( $base_args, [
     'tax_query' => [['taxonomy' => 'ticket_status', 'field' => 'slug', 'terms' => 'pending']],
 ]);
 $pending_query = new WP_Query( $pending_args );
-$pending = $pending_query->found_posts;
+$pending = $is_admin ? $pending_query->found_posts : count( array_filter( $ticket_data, fn($t) => $t['owner_id'] == $user_id && $t['status'] == 'pending' ) );
 $closed_args = array_merge( $base_args, [
     'tax_query' => [['taxonomy' => 'ticket_status', 'field' => 'slug', 'terms' => 'closed']],
     'date_query' => [
@@ -89,7 +94,7 @@ $closed_args = array_merge( $base_args, [
     ],
 ]);
 $closed_today_query = new WP_Query( $closed_args );
-$closed_today = $closed_today_query->found_posts;
+$closed_today = $is_admin ? $closed_today_query->found_posts : count( array_filter( $ticket_data, fn($t) => $t['owner_id'] == $user_id && $t['status'] == 'closed' ) );
 
 // Pagination setup
 $per_page = 5;
@@ -228,7 +233,6 @@ $ticket_data_paginated = array_slice( $ticket_data, ( $page - 1 ) * $per_page, $
                     <label for="wsts_ticket-type"><?php esc_html_e( 'Regarding', 'wsts' ); ?></label>
                     <select id="wsts_ticket-type" required>
                         <option value="general"><?php esc_html_e( 'General Inquiry', 'wsts' ); ?></option>
-                        <option value="payment"><?php esc_html_e( 'Payment Inquiry', 'wsts' ); ?></option>
                         <?php if ( class_exists( 'WooCommerce' ) ) : ?>
                             <option value="product"><?php esc_html_e( 'A Purchased Product', 'wsts' ); ?></option>
                         <?php endif; ?>
@@ -242,7 +246,7 @@ $ticket_data_paginated = array_slice( $ticket_data, ( $page - 1 ) * $per_page, $
                 </div>
                 <div class="wsts_form-group">
                     <label for="wsts_priority"><?php esc_html_e( 'Priority', 'wsts' ); ?></label>
-                    <select id="wsts_priority" name="wsts_priority" required>
+                    <select id="wsts_priority" required>
                         <option value=""><?php esc_html_e( 'Select Priority', 'wsts' ); ?></option>
                         <?php foreach ( $priorities as $priority ) : ?>
                             <option value="<?php echo esc_attr( $priority->term_id ); ?>"><?php echo esc_html( $priority->name ); ?></option>
@@ -251,17 +255,24 @@ $ticket_data_paginated = array_slice( $ticket_data, ( $page - 1 ) * $per_page, $
                 </div>
                 <div class="wsts_form-group">
                     <label for="wsts_description"><?php esc_html_e( 'Description', 'wsts' ); ?></label>
-                    <div class="wsts_editor-container">
-                        <div class="wsts_editor-header">
-                            <button type="button" data-command="bold"><strong>B</strong></button>
-                            <button type="button" data-command="italic"><em>I</em></button>
-                            <button type="button" data-command="underline"><u>U</u></button>
-                            <button type="button" data-command="insertUnorderedList">• List</button>
-                            <button type="button" data-command="insertOrderedList">1. List</button>
-                            <button type="button" data-command="createLink">🔗 Link</button>
-                        </div>
-                        <div class="wsts_editor-content" id="wsts_description" contenteditable="true" data-placeholder="<?php esc_attr_e( 'Describe your issue in detail...', 'wsts' ); ?>"></div>
-                    </div>
+                    <?php
+                    $editor_settings = [
+                        'textarea_name' => 'wsts_description',
+                        'editor_id' => 'wsts_description',
+                        'media_buttons' => true,
+                        'textarea_rows' => 15,
+                        'teeny' => false,
+                        'quicktags' => true,
+                        'tinymce' => [
+                            'toolbar1' => 'formatselect bold italic underline strikethrough | bullist numlist outdent indent | blockquote | alignleft aligncenter alignright | link unlink | wp_more | spellchecker',
+                            'toolbar2' => 'styleselect forecolor backcolor | table | hr removeformat | subscript superscript | code charmap | pastetext pasteword | undo redo | wp_help',
+                            'plugins' => 'charmap colorpicker hr image lists media paste table textcolor wordpress wpautoresize wpdialogs wpeditimage wpemoji wpgallery wplink wptextpattern wpview',
+                            'menubar' => true,
+                            'statusbar' => true,
+                        ],
+                    ];
+                    wp_editor( '', 'wsts_description', $editor_settings );
+                    ?>
                 </div>
             </form>
         </div>
@@ -320,17 +331,22 @@ $ticket_data_paginated = array_slice( $ticket_data, ( $page - 1 ) * $per_page, $
                 <div class="wsts_add-comment">
                     <div class="wsts_form-group">
                         <label for="wsts_new-comment"><?php esc_html_e( 'Add Comment', 'wsts' ); ?></label>
-                        <div class="wsts_editor-container">
-                            <div class="wsts_editor-header">
-                                <button type="button" data-command="bold"><strong>B</strong></button>
-                                <button type="button" data-command="italic"><em>I</em></button>
-                                <button type="button" data-command="underline"><u>U</u></button>
-                                <button type="button" data-command="insertUnorderedList">• List</button>
-                                <button type="button" data-command="insertOrderedList">1. List</button>
-                                <button type="button" data-command="createLink">🔗 Link</button>
-                            </div>
-                            <div class="wsts_editor-content" id="wsts_new-comment" contenteditable="true" data-placeholder="<?php esc_attr_e( 'Type your comment here...', 'wsts' ); ?>"></div>
-                        </div>
+                        <?php
+                        $comment_editor_settings = [
+                            'textarea_name' => 'wsts_new-comment',
+                            'editor_id' => 'wsts_new-comment',
+                            'media_buttons' => false,
+                            'textarea_rows' => 5,
+                            'teeny' => true,
+                            'quicktags' => false,
+                            'tinymce' => [
+                                'toolbar1' => 'bold,italic,underline,bullist,numlist,link,unlink',
+                                'toolbar2' => '',
+                                'plugins' => 'lists,link',
+                            ],
+                        ];
+                        wp_editor( '', 'wsts_new-comment', $comment_editor_settings );
+                        ?>
                     </div>
                     <button class="wsts_btn-primary" id="wsts_add-comment-btn"><?php esc_html_e( 'Add Comment', 'wsts' ); ?></button>
                 </div>

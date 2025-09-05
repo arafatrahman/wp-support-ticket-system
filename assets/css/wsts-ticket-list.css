@@ -477,3 +477,518 @@
         width: 95%;
     }
 }
+
+
+/* assets/css/wsts-ticket-list.css */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+body {
+    background-color: #f5f7fa;
+    color: #333;
+    line-height: 1.6;
+}
+
+.wsts_container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.wsts_header {
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    color: white;
+    padding: 20px 0;
+    border-radius: 10px;
+    margin-bottom: 30px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.wsts_header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 20px;
+}
+
+.wsts_logo {
+    font-size: 24px;
+    font-weight: bold;
+}
+
+.wsts_search-bar {
+    flex-grow: 1;
+    margin: 0 20px;
+}
+
+.wsts_search-bar input {
+    width: 100%;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 50px;
+    font-size: 16px;
+}
+
+.wsts_user-actions button {
+    background-color: white;
+    color: #2563eb;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 50px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.wsts_user-actions button:hover {
+    background-color: #e0e7ff;
+}
+
+.wsts_main-content {
+    display: flex;
+    gap: 20px;
+}
+
+.wsts_sidebar {
+    flex: 0 0 250px;
+    background-color: white;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+.wsts_sidebar h2 {
+    margin-bottom: 20px;
+    color: #1d4ed8;
+    border-bottom: 2px solid #e0e7ff;
+    padding-bottom: 10px;
+}
+
+.wsts_filters div {
+    margin-bottom: 15px;
+}
+
+.wsts_filters label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 500;
+}
+
+.wsts_filters select, .wsts_filters input {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+}
+
+.wsts_filters button {
+    width: 100%;
+    padding: 10px;
+    background-color: #2563eb;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color 0.3s ease;
+}
+
+.wsts_filters button:hover {
+    background-color: #1d4ed8;
+}
+
+.wsts_content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.wsts_stats-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+}
+
+.wsts_stat-card {
+    background-color: white;
+    border-radius: 10px;
+    padding: 20px;
+    text-align: center;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+.wsts_stat-card h3 {
+    font-size: 14px;
+    color: #64748b;
+    margin-bottom: 10px;
+}
+
+.wsts_stat-card .wsts_number {
+    font-size: 28px;
+    font-weight: bold;
+    color: #1d4ed8;
+}
+
+.wsts_ticket-list {
+    background-color: white;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+.wsts_ticket-list-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 1px solid #e0e7ff;
+}
+
+.wsts_ticket-list-header h2 {
+    color: #1d4ed8;
+}
+
+.wsts_new-ticket-btn {
+    background-color: #2563eb;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 50px;
+    font-weight: bold;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    transition: background-color 0.3s ease;
+}
+
+.wsts_new-ticket-btn:hover {
+    background-color: #1d4ed8;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th, td {
+    padding: 15px 20px;
+    text-align: left;
+    border-bottom: 1px solid #e0e7ff;
+}
+
+th {
+    background-color: #f8fafc;
+    font-weight: 600;
+    color: #64748b;
+}
+
+tr {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+tr:hover {
+    background-color: #f1f5f9;
+}
+
+.wsts_status {
+    padding: 5px 10px;
+    border-radius: 50px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.wsts_status-open {
+    background-color: #dcfce7;
+    color: #16a34a;
+}
+
+.wsts_status-pending {
+    background-color: #fef3c7;
+    color: #d97706;
+}
+
+.wsts_status-closed {
+    background-color: #fee2e2;
+    color: #dc2626;
+}
+
+.wsts_priority-high {
+    color: #dc2626;
+    font-weight: bold;
+}
+
+.wsts_priority-medium {
+    color: #d97706;
+    font-weight: bold;
+}
+
+.wsts_priority-low {
+    color: #16a34a;
+    font-weight: bold;
+}
+
+.wsts_action-btn {
+    background: none;
+    border: none;
+    color: #2563eb;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+.wsts_pagination {
+    display: flex;
+    justify-content: center;
+    padding: 20px;
+    gap: 10px;
+}
+
+.wsts_pagination button {
+    padding: 8px 15px;
+    border: 1px solid #ddd;
+    background-color: white;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.wsts_pagination button.wsts_active {
+    background-color: #2563eb;
+    color: white;
+    border-color: #2563eb;
+}
+
+.wsts_pagination button:hover:not(.wsts_active) {
+    background-color: #f1f5f9;
+}
+
+/* Modal Styles */
+.wsts_modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+}
+
+.wsts_modal-content {
+    background-color: white;
+    border-radius: 10px;
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    overflow-y: auto;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+.wsts_modal-header {
+    padding: 20px;
+    border-bottom: 1px solid #e0e7ff;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.wsts_modal-header h2 {
+    color: #1d4ed8;
+}
+
+.wsts_close-btn {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #64748b;
+}
+
+.wsts_modal-body {
+    padding: 20px;
+}
+
+.wsts_form-group {
+    margin-bottom: 20px;
+}
+
+.wsts_form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.wsts_form-group input, .wsts_form-group select, .wsts_form-group textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: 16px;
+}
+
+.wsts_form-group textarea {
+    min-height: 120px;
+    resize: vertical;
+}
+
+.wsts_modal-footer {
+    padding: 20px;
+    border-top: 1px solid #e0e7ff;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.wsts_modal-footer button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.wsts_btn-primary {
+    background-color: #2563eb;
+    color: white;
+}
+
+.wsts_btn-secondary {
+    background-color: #e0e7ff;
+    color: #2563eb;
+}
+
+.wsts_ticket-details {
+    margin-bottom: 20px;
+}
+
+.wsts_ticket-details .wsts_detail-row {
+    display: flex;
+    margin-bottom: 15px;
+}
+
+.wsts_ticket-details .wsts_detail-label {
+    flex: 0 0 120px;
+    font-weight: 500;
+    color: #64748b;
+}
+
+.wsts_ticket-details .wsts_detail-value {
+    flex: 1;
+}
+
+.wsts_comments-section {
+    margin-top: 30px;
+}
+
+.wsts_comment {
+    border: 1px solid #e0e7ff;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 15px;
+    background-color: #f8fafc;
+}
+
+.wsts_comment-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    font-size: 14px;
+    color: #64748b;
+}
+
+.wsts_comment-text {
+    line-height: 1.5;
+}
+
+.wsts_add-comment {
+    margin-top: 20px;
+}
+
+.wsts_editor-container {
+    border: 1px solid #ddd;
+    border-radius: 5px;
+}
+
+.wsts_editor-header {
+    background-color: #f8fafc;
+    padding: 10px;
+    border-bottom: 1px solid #e0e7ff;
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+}
+
+.wsts_editor-header button {
+    background: none;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.wsts_editor-header button:hover {
+    background-color: #e0e7ff;
+}
+
+.wsts_editor-content {
+    min-height: 200px;
+    padding: 15px;
+    outline: none;
+}
+
+.wsts_editor-content:empty:before {
+    content: attr(data-placeholder);
+    color: #64748b;
+}
+
+@media (max-width: 768px) {
+    .wsts_main-content {
+        flex-direction: column;
+    }
+    .wsts_sidebar {
+        flex: 0 0 auto;
+    }
+    .wsts_stats-cards {
+        grid-template-columns: 1fr;
+    }
+    .wsts_header-content {
+        flex-direction: column;
+        gap: 15px;
+    }
+    .wsts_search-bar {
+        margin: 0;
+        width: 100%;
+    }
+    .wsts_modal-content {
+        width: 95%;
+    }
+}
+
+/* Add admin comment styling */
+.wsts_comment-header .wsts_comment-author:after {
+    content: '';
+    display: inline-block;
+    padding: 2px 6px;
+    margin-left: 5px;
+    font-size: 10px;
+    font-weight: bold;
+    color: white;
+    background-color: #2563eb;
+    border-radius: 3px;
+}
+
+.wsts_comment-header .wsts_comment-author:contains('(Admin)'):after {
+    content: 'Admin';
+}

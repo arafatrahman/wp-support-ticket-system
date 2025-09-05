@@ -9,6 +9,8 @@
 
     // Initialize ticket data from localized script
     const tickets = window.wsts_ajax.tickets || [];
+    const isAdmin = window.wsts_ajax.is_admin;
+    const currentUserId = <?php echo get_current_user_id(); ?>; // Added via PHP
 
     // DOM Elements
     const elements = {
@@ -50,7 +52,12 @@
         elements.ticketsTableBody.innerHTML = '';
         let filteredTickets = tickets;
 
-        // Apply filters
+        // Apply user-specific filtering
+        if (!isAdmin) {
+            filteredTickets = filteredTickets.filter(t => t.owner_id === currentUserId);
+        }
+
+        // Apply additional filters
         if (filter.status && filter.status !== 'all') {
             filteredTickets = filteredTickets.filter(t => t.status === filter.status);
         }
@@ -141,7 +148,7 @@
         // Add comment
         elements.addCommentBtn.addEventListener('click', addComment);
 
-        // Click on ticket row
+        // Click on ticket row to view details
         elements.ticketsTableBody.addEventListener('click', (e) => {
             const btn = e.target.closest('.wsts_action-btn');
             if (btn) {
@@ -216,7 +223,9 @@
      * @param {HTMLElement} modal - The modal element to open
      */
     function openModal(modal) {
-        modal.style.display = 'flex';
+        if (modal) {
+            modal.style.display = 'flex';
+        }
     }
 
     /**
@@ -229,7 +238,8 @@
         document.getElementById('wsts_ticket-type').value = 'general';
         document.getElementById('wsts_ticket-product').value = '';
         document.getElementById('wsts_priority').value = '';
-        document.getElementById('wsts_description').innerHTML = '';
+        tinymce.get('wsts_description').setContent(''); // Use TinyMCE for description
+        tinymce.get('wsts_new-comment').setContent(''); // Use TinyMCE for comment
         document.getElementById('wsts_form-notice').style.display = 'none';
     }
 
@@ -241,11 +251,11 @@
         const type = document.getElementById('wsts_ticket-type').value;
         const product_id = type === 'product' ? document.getElementById('wsts_ticket-product').value : '';
         const priority = document.getElementById('wsts_priority').value;
-        const description = document.getElementById('wsts_description').innerHTML;
+        const description = tinymce.get('wsts_description').getContent(); // Use TinyMCE content
         const notice = document.getElementById('wsts_form-notice');
 
-        if (!subject || !type || !priority || !description) {
-            notice.textContent = 'Please fill in all fields';
+        if (!subject || !type || !priority || !description || description === '<p></p>') {
+            notice.textContent = 'Please fill in all fields with valid content';
             notice.style.display = 'block';
             return;
         }
@@ -276,6 +286,11 @@
      * @param {number} ticketId - The ID of the ticket to display
      */
     function getSingleTicketHtml(ticketId) {
+        if (!ticketId) {
+            console.error('Invalid ticket ID:', ticketId);
+            return;
+        }
+
         $.post(wsts_ajax.ajax_url, {
             action: 'wsts_get_single_ticket_html',
             nonce: wsts_ajax.nonce,
@@ -283,6 +298,18 @@
         }, function(resp) {
             if (resp.success) {
                 const ticket = tickets.find(t => t.id === ticketId);
+                if (!ticket) {
+                    console.error('Ticket not found in local data:', ticketId);
+                    return;
+                }
+
+                // Check if normal user is trying to view someone else's ticket
+                if (!isAdmin && ticket.owner_id !== currentUserId) {
+                    alert('You do not have permission to view this ticket.');
+                    closeModals();
+                    return;
+                }
+
                 document.getElementById('wsts_ticket-modal-title').textContent = `Ticket #${ticketId}`;
                 document.getElementById('wsts_detail-id').textContent = `#${ticketId}`;
                 document.getElementById('wsts_detail-subject').textContent = ticket.subject;
@@ -300,16 +327,17 @@
                     elements.approveTicketBtn.style.display = 'none';
                 }
 
-                // Render comments
+                // Render comments with admin response indication
                 const commentsContainer = document.getElementById('wsts_comments-container');
                 commentsContainer.innerHTML = '';
                 if (ticket.comments && ticket.comments.length > 0) {
                     ticket.comments.forEach(comment => {
+                        const isAdminComment = comment.user_id && user_can( comment.user_id, 'manage_options' );
                         const commentElement = document.createElement('div');
                         commentElement.className = 'wsts_comment';
                         commentElement.innerHTML = `
                             <div class="wsts_comment-header">
-                                <span class="wsts_comment-author">${comment.comment_author}</span>
+                                <span class="wsts_comment-author">${comment.comment_author} ${isAdminComment ? '(Admin)' : ''}</span>
                                 <span class="wsts_comment-date">${new Date(comment.comment_date).toLocaleString()}</span>
                             </div>
                             <div class="wsts_comment-text">${comment.comment_content}</div>
@@ -321,10 +349,16 @@
                 }
 
                 // Reset comment editor
-                document.getElementById('wsts_new-comment').innerHTML = '';
+                tinymce.get('wsts_new-comment').setContent('');
 
                 openModal(elements.ticketDetailModal);
+            } else {
+                console.error('AJAX error for ticket ID:', ticketId, resp.data);
+                alert('Failed to load ticket details. Please try again.');
             }
+        }).fail(function(xhr, status, error) {
+            console.error('AJAX request failed:', status, error);
+            alert('An error occurred while loading ticket details.');
         });
     }
 
@@ -365,11 +399,18 @@
      * Add a comment to the ticket via AJAX
      */
     function addComment() {
-        const commentText = document.getElementById('wsts_new-comment').innerHTML;
+        const commentText = tinymce.get('wsts_new-comment').getContent();
         const ticketId = parseInt(document.getElementById('wsts_detail-id').textContent.replace('#', ''));
 
-        if (!commentText || commentText === '<br>') {
+        if (!commentText || commentText === '<p></p>') {
             alert('Please enter a comment');
+            return;
+        }
+
+        // Check if the user has permission to comment on this ticket
+        const ticket = tickets.find(t => t.id === ticketId);
+        if (!isAdmin && ticket.owner_id !== currentUserId) {
+            alert('You do not have permission to comment on this ticket.');
             return;
         }
 
@@ -382,7 +423,7 @@
         }, function(resp) {
             if (resp.success) {
                 getSingleTicketHtml(ticketId);
-                if (wsts_ajax.is_admin && tickets.find(t => t.id === ticketId).status === 'pending') {
+                if (wsts_ajax.is_admin && ticket.status === 'pending') {
                     approveTicket();
                 }
             } else {
